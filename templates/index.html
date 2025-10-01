@@ -1,44 +1,63 @@
-{% extends "base.html" %}
-{% import "bootstrap/wtf.html" as wtf %}
+{% extends "bootstrap/base.html" %}
+{% block title %}Avaliação contínua: Aula 060.C{% endblock %}
 
-{% block title %}Flasky{% endblock %}
+{% block navbar %}
+<nav class="navbar navbar-inverse">
+  <div class="container-fluid">
+    <div class="navbar-header">
+      <a class="navbar-brand" href="#">Avaliação contínua: <b>Aula 060.C</b></a>
+    </div>
+    <ul class="nav navbar-nav">
+      <li><a href="{{ url_for('index') }}">Home</a></li>
+    </ul>
+  </div>
+</nav>
+{% endblock %}
 
-{% block page_content %}
-<div class="page-header">
-    <h1>Olá, {% if name %}{{ name }}{% else %}Stranger{% endif %}!</h1>
-    {% if not known %}
-    <p>Prazer em conhecê-lo!</p>
-    {% else %}
-    <p>Feliz em vê-lo novamente!</p>
-    {% endif %}
+{% block content %}
+<div class="container">
+  <h1>Olá, {{ name if name else 'Stranger' }}!</h1>
+  <p>Prazer em conhecê-lo!</p>
+  <form method="POST">
+    {{ form.hidden_tag() }}
+    <div class="form-group">
+      {{ form.name.label }} 
+      {{ form.name(class="form-control") }}
+    </div>
+    <div class="form-group">
+      {{ form.role.label }}
+      {{ form.role(class="form-control") }}
+    </div>
+    <div class="form-group">
+      {{ form.submit(class="btn btn-default") }}
+    </div>
+  </form>
+
+  <h3>Relação de usuários cadastrados</h3>
+  <p>Quantidade: {{ users|length }}</p>
+  <table class="table">
+    <tr><th>Nome do usuário</th><th>Função</th></tr>
+    {% for u in users %}
+      <tr><td>{{ u.username }}</td><td>{{ u.role.name }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h3>Relação de funções cadastradas</h3>
+  <p>Quantidade: {{ roles|length }}</p>
+  <table class="table">
+    <tr><th>Funções</th><th>Usuários</th></tr>
+    {% for r in roles %}
+      <tr>
+        <td>{{ r.name }}</td>
+        <td>
+          <ol>
+          {% for u in r.users %}
+            <li>{{ u.username }}</li>
+          {% endfor %}
+          </ol>
+        </td>
+      </tr>
+    {% endfor %}
+  </table>
 </div>
-{{ wtf.quick_form(form) }}
-
-<h2>Relação de usuários cadastrados</h2>
-{% if users %}
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Nome do usuário</th>
-                <th>Função</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for user in users %}
-            <tr>
-                <td>{{ user.username }}</td>
-                <td>
-                    {% if user.role %}
-                        {{ user.role.name }}
-                    {% else %}
-                        <span>Sem função</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-{% else %}
-    <p>Nenhum usuário cadastrado ainda.</p>
-{% endif %}
 {% endblock %}
