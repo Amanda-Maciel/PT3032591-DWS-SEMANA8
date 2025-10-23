@@ -14,9 +14,7 @@ from flask_mail import Mail, Message
 import requests
 from datetime import datetime
 
-
 basedir = os.path.abspath(os.path.dirname(__file__))
-
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'hard to guess string'
@@ -57,20 +55,50 @@ class User(db.Model):
     def __repr__(self):
         return '<User %r>' % self.username
 
+class EmailLog(db.Model):
+    __tablename__ = 'email_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    sender = db.Column(db.String(128))
+    recipient = db.Column(db.String(256)) # Armazena a lista de e-mails como texto
+    subject = db.Column(db.String(128))
+    body = db.Column(db.Text)
+    timestamp = db.Column(db.DateTime, index=True, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<EmailLog {self.id}>'
+
 def send_simple_message(to, subject, newUser):
+
+    email_body = f"Novo usuário cadastrado: {newUser}"
+
+    full_subject = app.config['FLASKY_MAIL_SUBJECT_PREFIX'] + ' ' + subject
+
     print('Enviando mensagem (POST)...', flush=True)
     print('URL: ' + str(app.config['API_URL']), flush=True)
     print('api: ' + str(app.config['API_KEY']), flush=True)
     print('from: ' + str(app.config['API_FROM']), flush=True)
     print('to: ' + str(to), flush=True)
-    print('subject: ' + str(app.config['FLASKY_MAIL_SUBJECT_PREFIX']) + ' ' + subject, flush=True)
-    print('text: ' + "Prontuário: PT3032515\n" + "Nome: Soraya Gomes da Silva\n" + "Novo usuário cadastrado: " + newUser, flush=True)
+    print('subject: ' + full_subject, flush=True)
+    print('text: ' + email_body, flush=True)
 
     resposta = requests.post(app.config['API_URL'],
-                             auth=("api", app.config['API_KEY']), data={"from": app.config['API_FROM'],
-                                                                        "to": to,
-                                                                        "subject": app.config['FLASKY_MAIL_SUBJECT_PREFIX'] + ' ' + subject,
-                                                                        "text": "Prontuário: PT3032515\n" + "Nome: Soraya Gomes da Silva\n" + "Novo usuário cadastrado: " + newUser})
+                             auth=("api", app.config['API_KEY']),
+                             data={"from": app.config['API_FROM'],
+                                   "to": to,
+                                   "subject": full_subject,
+                                   "text": email_body})
+
+    if resposta:
+        log_entry = EmailLog(
+            sender=app.config['API_FROM'],
+            recipient=str(to),
+            subject=full_subject,
+            body=email_body,
+            timestamp=datetime.utcnow()
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+
 
     print('Enviando mensagem (Resposta)...' + str(resposta) + ' - ' + datetime.now().strftime("%m/%d/%Y, %H:%M:%S"), flush=True)
     return resposta
@@ -82,35 +110,28 @@ class NameForm(FlaskForm):
     submit = SubmitField('Submit')
 
 
-@app.shell_context_processor
-def make_shell_context():
-    return dict(db=db, User=User, Role=Role)
-
-
 @app.route('/', methods=['GET', 'POST'])
 def index():
     form = NameForm()
     if form.validate_on_submit():
         user = User.query.filter_by(username=form.name.data).first()
         if user is None:
-            user = User(username=form.name.data)
+
+            user_role = Role.query.filter_by(name='User').first()
+            if user_role is None:
+                user_role = Role(name='User')
+                db.session.add(user_role)
+
+            user = User(username=form.name.data, role=user_role)
             db.session.add(user)
             db.session.commit()
             session['known'] = False
 
-            print('Verificando variáveis de ambiente: Server log do PythonAnyWhere', flush=True)
-            print('FLASKY_ADMIN: ' + str(app.config['FLASKY_ADMIN']), flush=True)
-            print('URL: ' + str(app.config['API_URL']), flush=True)
-            print('api: ' + str(app.config['API_KEY']), flush=True)
-            print('from: ' + str(app.config['API_FROM']), flush=True)
-            print('to: ' + str([app.config['FLASKY_ADMIN'], "flaskaulasweb@zohomail.com"]), flush=True)
-            print('subject: ' + str(app.config['FLASKY_MAIL_SUBJECT_PREFIX']), flush=True)
-            print('text: ' + "Novo usuário cadastrado: " + form.name.data, flush=True)
-
             if app.config['FLASKY_ADMIN']:
-                print('Enviando mensagem...', flush=True)
-                send_simple_message([app.config['FLASKY_ADMIN'], "flaskaulasweb@zohomail.com"], 'Novo usuário', form.name.data)
-                print('Mensagem enviada...', flush=True)
+                destinatarios = [app.config['FLASKY_ADMIN']]
+                if form.email.data:
+                    destinatarios.append("flaskaulasweb@zohomail.com")
+                send_simple_message(destinatarios, 'Novo usuário', form.name.data)
         else:
             session['known'] = True
         session['name'] = form.name.data
@@ -118,5 +139,13 @@ def index():
 
     users_list = User.query.order_by(User.username).all()
 
-    return render_template('index.html', form=form, name=session.get('name'),
-                           known=session.get('known', False), users=users_list)
+    return render_template('index.html',
+                           form=form,
+                           name=session.get('name'),
+                           known=session.get('known', False),
+                           users=users_list)
+
+@app.route('/emailsEnviados')
+def emails():
+    email_list = EmailLog.query.order_by(EmailLog.timestamp.desc()).all()
+    return render_template('emails.html', emails=email_list)
